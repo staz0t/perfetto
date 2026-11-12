@@ -298,7 +298,8 @@ TEST(TracedPerfCtsTest, ProfileKernelCallstack) {
     for (const auto& fname : packet.interned_data().function_names()) {
       fname_count++;
       if (fname.str() == "schedule" || fname.str() == "__schedule" ||
-          fname.str() == "preempt_schedule") {
+          fname.str() == "preempt_schedule" ||
+          fname.str() == "preempt_schedule_notrace") {
         found_schedule = true;
       }
       if (fname.iid() > kSmallInternedId) {
@@ -316,10 +317,32 @@ TEST(TracedPerfCtsTest, ProfileKernelCallstack) {
     }
   }
 
+  // Dumps one callstack per line. Example:
+  // [1] __schedule <- schedule_idle <- cpu_startup_entry <- rest_init ...
+  // [2] schedule <- perf_mon_task <- kthread <- ret_from_fork
+  auto callstacks_to_string = [&packets]() {
+    std::string ret;
+    int idx = 0;
+    for (const auto& packet : packets) {
+      bool first = true;
+      for (const auto& fname : packet.interned_data().function_names()) {
+        if (fname.str().empty())
+          continue;
+        if (first) {
+          ret += "\n  [" + std::to_string(++idx) + "] " + fname.str();
+          first = false;
+        } else {
+          ret += " <- " + fname.str();
+        }
+      }
+    }
+    return ret;
+  };
+
   EXPECT_TRUE(found_schedule)
       << "Failed to find a scheduling kernel function symbol name in the "
          "profile, total functions seen: "
-      << fname_count;
+      << fname_count << ", callstacks:" << callstacks_to_string();
 
   EXPECT_EQ(unexpected_iids, 0u) << "Unexpectedly high interning ids.";
 }
